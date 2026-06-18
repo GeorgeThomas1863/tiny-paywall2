@@ -1,0 +1,10 @@
+[project]
+name = "tiny-paywall2-backend"
+version = "0.1.0"
+description = "FastAPI backend service"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "motor>=3.6.0",
+]
