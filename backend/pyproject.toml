@@ -7,4 +7,5 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "motor>=3.6.0",
+    "python-dotenv>=1.2.0",
 ]
