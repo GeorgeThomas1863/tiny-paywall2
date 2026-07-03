@@ -9,7 +9,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MONGO_URL=mongodb://mongo:27017
+      - MONGO_URI=mongodb://mongo:27017
       - DB_NAME=${DB_NAME}
     depends_on:
       - mongo
