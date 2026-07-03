@@ -34,6 +34,11 @@ async def ensure_indexes():
             "display_name", unique=True, collation=Collation(locale="en", strength=2)
         )
         await db.sessions.create_index("expires_at", expireAfterSeconds=0)
+        await db.articles.create_index("author_id")
+        await db.purchases.create_index(
+            [("buyer_id", 1), ("article_id", 1)], unique=True
+        )
+        await db.purchases.create_index("author_id")
         print("MongoDB indexes ensured")
     except Exception as e:
         print(f"MongoDB index creation failed: {e}")

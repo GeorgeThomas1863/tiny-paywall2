@@ -31,3 +31,17 @@ async def client():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as test_client:
         yield test_client
+
+
+@pytest_asyncio.fixture
+async def make_client():
+    clients = []
+
+    async def create_client():
+        new_client = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+        clients.append(new_client)
+        return new_client
+
+    yield create_client
+    for open_client in clients:
+        await open_client.aclose()

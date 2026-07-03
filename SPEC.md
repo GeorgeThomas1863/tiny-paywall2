@@ -309,6 +309,7 @@ clauses, then named helper calls — no inline money logic anywhere outside
 | `GET /articles` | optional | Published only, newest first. Items: `{id, title, summary, price_cents, author_name, created_at, owned}`. `owned` = entitlement rule. **No `body`, ever, in lists.** |
 | `GET /articles/{id}` | optional | Teaser fields + `owned` (+ `status` and `price_cents` editable context when caller is author/admin). `body` included **only** if entitled. Drafts → 404 for everyone except author/admin. |
 | `GET /articles/mine` | session | All caller's articles, any status, plus per-article `sales_count` and `earned_cents` (one aggregation over purchases). |
+| `GET /articles/all` | admin | Every article, any status, any author (teaser fields + status + author_name, no bodies) — feeds the admin moderation table. |
 | `POST /articles` | session | Create as `draft`. Validate title/summary/body/price (§3 bounds). → `{success, message, id}` |
 | `PUT /articles/{id}` | author or admin | Update any of title/summary/body/price_cents/status (`draft` ↔ `published`). Same validation. Buyers keep access to the current version. |
 | `DELETE /articles/{id}` | author or admin | Delete. Purchase/ledger history is never touched. |

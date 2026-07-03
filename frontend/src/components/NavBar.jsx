@@ -6,6 +6,8 @@ function NavBar({ user, onLogout }) {
       <Link to="/">tiny-paywall</Link>
       {user ? (
         <span>
+          <Link to="/write">Write</Link>
+          {user.is_admin && <Link to="/admin">Admin</Link>}
           {user.display_name}
           <button onClick={onLogout}>Logout</button>
         </span>

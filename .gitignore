@@ -23,6 +23,7 @@ frontend/dist/
 .claude/.tmp/
 .claude/.pics/
 .claude/settings.local.json
+.playwright-mcp/
 
 # Editor
 .vscode/
