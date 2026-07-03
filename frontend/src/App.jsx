@@ -1,19 +1,41 @@
-import { useState, useEffect } from 'react'
-import { fetchHelloMessage } from './api/hello-api.js'
+import { useEffect, useState } from 'react'
+import { Route, Routes } from 'react-router-dom'
+import { fetchMe, logoutUser } from './api/auth-api.js'
+import NavBar from './components/NavBar.jsx'
+import AuthPage from './pages/AuthPage.jsx'
 
 function App() {
-  const [message, setMessage] = useState(null)
-  const [error, setError] = useState(null)
+  const [user, setUser] = useState(null)
+  const [authChecked, setAuthChecked] = useState(false)
+
+  const refreshUser = async () => {
+    const me = await fetchMe()
+    setUser(me)
+    setAuthChecked(true)
+  }
+
+  const handleLogout = async () => {
+    await logoutUser()
+    await refreshUser()
+  }
 
   useEffect(() => {
-    fetchHelloMessage()
-      .then(setMessage)
-      .catch((err) => setError(err.message))
+    refreshUser()
   }, [])
 
-  if (error) return <p>Error: {error}</p>
-  if (!message) return <p>Loading...</p>
-  return <h1>{message}</h1>
+  if (!authChecked) return <p>Loading...</p>
+
+  return (
+    <>
+      <NavBar user={user} onLogout={handleLogout} />
+      <main>
+        <Routes>
+          <Route path="/" element={<h1>Tiny Paywall</h1>} />
+          <Route path="/login" element={<AuthPage onAuthed={refreshUser} />} />
+        </Routes>
+      </main>
+    </>
+  )
 }
 
 export default App

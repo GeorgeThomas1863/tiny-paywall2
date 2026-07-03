@@ -434,10 +434,12 @@ for `${VAR}` substitution.
 |---|---|
 | `MONGO_URI` | local: user's existing URI + `directConnection=true` once the replica set lands (§7) · compose: `mongodb://mongo:27017/?directConnection=true` |
 | `DB_NAME` | app database name |
-| `FRONTEND_URL` | CORS origin + Stripe return URLs; `http://localhost:3000` dev |
+| `BACKEND_PORT` | dev port for uvicorn (`uv run python main.py`); default 8000 |
+| `FRONTEND_PORT` | dev port for Vite; default 3000 |
+| `FRONTEND_URL` | optional override — CORS origin + Stripe return URLs. When unset, derived as `http://localhost:{FRONTEND_PORT}` (`backend/config.py`) |
 | `STRIPE_SECRET_KEY` | `sk_test_…` until launch |
 | `STRIPE_WEBHOOK_SECRET` | from `stripe listen` (dev) / dashboard endpoint (prod) |
-| `VITE_API_URL` | frontend; public; defaults `http://localhost:8000` |
+| `VITE_API_URL` | optional override — frontend's API base. When unset, derived as `http://localhost:{BACKEND_PORT}` (`frontend/vite.config.js`, which reads the root `.env`) |
 
 New backend deps (pyproject only — Dockerfile installs from it): `bcrypt`, `stripe`.
 New frontend dep: `react-router-dom`.

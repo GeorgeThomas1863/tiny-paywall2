@@ -1,5 +1,6 @@
 import os
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.collation import Collation
 
 _client = None
 
@@ -7,7 +8,7 @@ _client = None
 def get_db_client():
     global _client
     if _client is None:
-        _client = AsyncIOMotorClient(os.environ["MONGO_URI"])
+        _client = AsyncIOMotorClient(os.environ["MONGO_URI"], tz_aware=True)
     return _client
 
 
@@ -29,6 +30,9 @@ async def ensure_indexes():
     try:
         db = get_db()
         await db.users.create_index("email", unique=True)
+        await db.users.create_index(
+            "display_name", unique=True, collation=Collation(locale="en", strength=2)
+        )
         await db.sessions.create_index("expires_at", expireAfterSeconds=0)
         print("MongoDB indexes ensured")
     except Exception as e:

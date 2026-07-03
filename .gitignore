@@ -6,6 +6,7 @@ dist/
 wheels/
 *.egg-info
 .venv
+.pytest_cache/
 
 # Node
 node_modules/
@@ -21,3 +22,7 @@ frontend/dist/
 # Claude working files
 .claude/.tmp/
 .claude/.pics/
+.claude/settings.local.json
+
+# Editor
+.vscode/
