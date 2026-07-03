@@ -5,18 +5,16 @@ import { formatCents } from '../format.js'
 
 function ArticleView() {
   const { articleId } = useParams()
-  const [article, setArticle] = useState(null)
-  const [notFound, setNotFound] = useState(false)
+  // undefined = loading, null = not found / failed, object = loaded
+  const [article, setArticle] = useState()
 
   useEffect(() => {
-    fetchArticle(articleId).then((data) => {
-      if (data === null) setNotFound(true)
-      setArticle(data)
-    })
+    setArticle(undefined)
+    fetchArticle(articleId).then(setArticle)
   }, [articleId])
 
-  if (notFound) return <p>Article not found.</p>
-  if (article === null) return <p>Loading article...</p>
+  if (article === undefined) return <p>Loading article...</p>
+  if (article === null) return <p>Article not found.</p>
 
   const canEdit = article.status !== undefined
 

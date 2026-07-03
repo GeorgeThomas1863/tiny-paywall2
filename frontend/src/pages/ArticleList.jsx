@@ -4,13 +4,15 @@ import { fetchArticles } from '../api/articles-api.js'
 import { formatCents } from '../format.js'
 
 function ArticleList() {
-  const [articles, setArticles] = useState(null)
+  // undefined = loading, null = failed, array = loaded
+  const [articles, setArticles] = useState()
 
   useEffect(() => {
     fetchArticles().then(setArticles)
   }, [])
 
-  if (articles === null) return <p>Loading articles...</p>
+  if (articles === undefined) return <p>Loading articles...</p>
+  if (articles === null) return <p role="alert">Couldn't load articles. Try refreshing.</p>
   if (articles.length === 0) return <p>No articles published yet.</p>
 
   return (

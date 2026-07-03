@@ -19,6 +19,20 @@ export const sendRequest = async (path, options = {}) => {
   }
 };
 
+export const fetchData = async (path) => {
+  const { status, data } = await sendRequest(path);
+  if (status !== 200) return null;
+  return data;
+};
+
+export const sendOperation = async (path, options, fallbackMessage) => {
+  const { status, data } = await sendRequest(path, options);
+  if (status !== 200) {
+    return { success: false, message: extractErrorMessage(data, fallbackMessage) };
+  }
+  return data;
+};
+
 export const extractErrorMessage = (data, fallback) => {
   if (!data) return fallback;
   if (typeof data.detail === "string") return data.detail;

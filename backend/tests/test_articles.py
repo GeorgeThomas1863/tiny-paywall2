@@ -1,3 +1,7 @@
+import pytest
+from bson import ObjectId
+from fastapi import HTTPException
+
 from db.connection import get_db
 
 ALICE = {"email": "alice@test.com", "password": "password123", "display_name": "Alice"}
@@ -371,3 +375,63 @@ async def test_admin_list_forbidden_for_non_admin(make_client):
     response = await alice.get("/articles/all")
 
     assert response.status_code == 403
+
+
+#--- failure modes ---
+
+class _FailingCollection:
+    def __getattr__(self, name):
+        def fail(*args, **kwargs):
+            raise RuntimeError("simulated mongo failure")
+
+        return fail
+
+
+class _FailingPurchasesDB:
+    def __init__(self, real_db):
+        self._real_db = real_db
+
+    def __getattr__(self, name):
+        if name == "purchases":
+            return _FailingCollection()
+        return getattr(self._real_db, name)
+
+
+async def test_purchases_lookup_failure_is_500_not_teaser(make_client, monkeypatch):
+    alice = await make_client()
+    bob = await make_client()
+    await register(alice, ALICE)
+    await register(bob, BOB)
+    article_id = await create_published_article(alice)
+
+    monkeypatch.setattr("routes.articles.get_db", lambda: _FailingPurchasesDB(get_db()))
+
+    response = await bob.get(f"/articles/{article_id}")
+    assert response.status_code == 500
+
+
+async def test_sales_stats_failure_is_500_not_zeros(make_client, monkeypatch):
+    alice = await make_client()
+    await register(alice, ALICE)
+    await create_published_article(alice)
+
+    monkeypatch.setattr("routes.articles.get_db", lambda: _FailingPurchasesDB(get_db()))
+
+    response = await alice.get("/articles/mine")
+    assert response.status_code == 500
+
+
+async def test_update_vanished_article_404():
+    from routes.articles import apply_article_update
+
+    with pytest.raises(HTTPException) as excinfo:
+        await apply_article_update(ObjectId(), {"title": "ghost"})
+    assert excinfo.value.status_code == 404
+
+
+async def test_delete_vanished_article_404():
+    from routes.articles import remove_article
+
+    with pytest.raises(HTTPException) as excinfo:
+        await remove_article(ObjectId())
+    assert excinfo.value.status_code == 404

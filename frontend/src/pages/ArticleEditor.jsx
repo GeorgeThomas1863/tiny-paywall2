@@ -2,8 +2,14 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { createArticle, deleteArticle, fetchArticle, updateArticle } from '../api/articles-api.js'
 
+// Keyed wrapper: /write/new and /write/:articleId render the same component in the
+// same route slot, so React would otherwise preserve form state across the transition.
 function ArticleEditor() {
   const { articleId } = useParams()
+  return <ArticleEditorForm key={articleId ?? 'new'} articleId={articleId} />
+}
+
+function ArticleEditorForm({ articleId }) {
   const navigate = useNavigate()
   const isNew = articleId === undefined
 
@@ -18,7 +24,8 @@ function ArticleEditor() {
   useEffect(() => {
     if (isNew) return
     fetchArticle(articleId).then((article) => {
-      if (article === null || article.body === undefined) {
+      // `status` is only serialized for the author/admin — it is the editability signal.
+      if (article === null || article.status === undefined) {
         setError('Article not found or not yours to edit')
         return
       }
@@ -40,12 +47,11 @@ function ArticleEditor() {
       summary,
       body,
       price_cents: Number(priceCents),
-      status: isPublished ? 'published' : 'draft',
     }
 
     const result = isNew
-      ? await createArticle({ title, summary, body, price_cents: Number(priceCents) })
-      : await updateArticle(articleId, fields)
+      ? await createArticle(fields)
+      : await updateArticle(articleId, { ...fields, status: isPublished ? 'published' : 'draft' })
 
     if (!result.success) {
       setError(result.message)
@@ -53,7 +59,14 @@ function ArticleEditor() {
     }
 
     if (isNew && isPublished) {
-      await updateArticle(result.id, { status: 'published' })
+      const publishResult = await updateArticle(result.id, { status: 'published' })
+      if (!publishResult.success) {
+        setError(
+          `Article was saved as a draft, but publishing failed: ${publishResult.message}. ` +
+            'Open it from My Articles to retry — do not save again here or you will create a duplicate.'
+        )
+        return
+      }
     }
     navigate('/write')
   }

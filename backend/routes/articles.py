@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 
 from bson import ObjectId
@@ -37,20 +38,22 @@ class ArticleUpdateBody(BaseModel):
 @router.get("/articles")
 async def list_articles(user=Depends(optional_auth)):
     articles = await find_published_articles()
-    author_names = await map_author_names(articles)
-    owned_ids = await find_purchased_article_ids(user, articles)
+    author_names, purchased_ids = await asyncio.gather(
+        map_author_names(articles), find_purchased_article_ids(user, articles)
+    )
 
     items = []
     for article in articles:
-        owned = compute_entitlement(article, user, owned_ids)
+        owned = is_author_or_admin(article, user) or article["_id"] in purchased_ids
         items.append(serialize_teaser(article, author_names, owned))
     return items
 
 
 @router.get("/articles/mine")
 async def list_my_articles(user=Depends(require_auth)):
-    articles = await find_articles_by_author(user["_id"])
-    stats = await aggregate_sales_stats(user["_id"])
+    articles, stats = await asyncio.gather(
+        find_articles_by_author(user["_id"]), aggregate_sales_stats(user["_id"])
+    )
 
     items = []
     for article in articles:
@@ -65,9 +68,7 @@ async def list_all_articles(user=Depends(require_admin)):
 
     items = []
     for article in articles:
-        item = serialize_teaser(article, author_names, owned=True)
-        item["status"] = article["status"]
-        items.append(item)
+        items.append(serialize_admin_teaser(article, author_names))
     return items
 
 
@@ -76,8 +77,7 @@ async def read_article(article_id: str, user=Depends(optional_auth)):
     article = await find_article_or_404(article_id)
     reject_hidden_draft(article, user)
 
-    owned_ids = await find_purchased_article_ids(user, [article])
-    owned = compute_entitlement(article, user, owned_ids)
+    owned = await resolve_owned(article, user)
     author_names = await map_author_names([article])
     return serialize_detail(article, author_names, owned, user)
 
@@ -112,28 +112,30 @@ async def delete_article(article_id: str, user=Depends(require_auth)):
 
 #--- guards / entitlement ---
 
-def compute_entitlement(article, user, purchased_ids):
+def is_author_or_admin(article, user):
     if user is None:
         return False
-    if user["is_admin"]:
+    return user["is_admin"] or article["author_id"] == user["_id"]
+
+
+async def resolve_owned(article, user):
+    if is_author_or_admin(article, user):
         return True
-    if article["author_id"] == user["_id"]:
-        return True
-    return article["_id"] in purchased_ids
+    if user is None:
+        return False
+    return await has_purchased(user["_id"], article["_id"])
 
 
 def reject_hidden_draft(article, user):
     if article["status"] == "published":
         return
-    if user is not None and (user["is_admin"] or article["author_id"] == user["_id"]):
+    if is_author_or_admin(article, user):
         return
     raise HTTPException(status_code=404, detail="Article not found")
 
 
 def reject_non_author_non_admin(article, user):
-    if user["is_admin"]:
-        return
-    if article["author_id"] == user["_id"]:
+    if is_author_or_admin(article, user):
         return
     raise HTTPException(status_code=403, detail="Not your article")
 
@@ -141,29 +143,23 @@ def reject_non_author_non_admin(article, user):
 #--- queries ---
 
 async def find_published_articles():
-    try:
-        cursor = get_db().articles.find({"status": "published"}).sort("created_at", -1)
-        return await cursor.to_list(None)
-    except Exception as e:
-        print(f"MONGO ERROR LISTING ARTICLES: {e}")
-        raise HTTPException(status_code=500, detail="Failed to load articles")
+    return await find_articles_sorted({"status": "published"})
 
 
 async def find_all_articles():
-    try:
-        cursor = get_db().articles.find({}).sort("created_at", -1)
-        return await cursor.to_list(None)
-    except Exception as e:
-        print(f"MONGO ERROR LISTING ALL ARTICLES: {e}")
-        raise HTTPException(status_code=500, detail="Failed to load articles")
+    return await find_articles_sorted({})
 
 
 async def find_articles_by_author(author_id):
+    return await find_articles_sorted({"author_id": author_id})
+
+
+async def find_articles_sorted(query):
     try:
-        cursor = get_db().articles.find({"author_id": author_id}).sort("created_at", -1)
+        cursor = get_db().articles.find(query).sort("created_at", -1)
         return await cursor.to_list(None)
     except Exception as e:
-        print(f"MONGO ERROR LISTING AUTHOR ARTICLES {author_id}: {e}")
+        print(f"MONGO ERROR LISTING ARTICLES {query}: {e}")
         raise HTTPException(status_code=500, detail="Failed to load articles")
 
 
@@ -193,7 +189,7 @@ async def map_author_names(articles):
         authors = await cursor.to_list(None)
     except Exception as e:
         print(f"MONGO ERROR MAPPING AUTHOR NAMES: {e}")
-        return {}
+        raise HTTPException(status_code=500, detail="Failed to load articles")
 
     names = {}
     for author in authors:
@@ -202,7 +198,7 @@ async def map_author_names(articles):
 
 
 async def find_purchased_article_ids(user, articles):
-    if user is None or not articles:
+    if user is None or user["is_admin"] or not articles:
         return set()
 
     article_ids = [article["_id"] for article in articles]
@@ -213,9 +209,21 @@ async def find_purchased_article_ids(user, articles):
         purchases = await cursor.to_list(None)
     except Exception as e:
         print(f"MONGO ERROR FINDING PURCHASES for {user['_id']}: {e}")
-        return set()
+        raise HTTPException(status_code=500, detail="Failed to load articles")
 
     return {purchase["article_id"] for purchase in purchases}
+
+
+async def has_purchased(buyer_id, article_id):
+    try:
+        purchase = await get_db().purchases.find_one(
+            {"buyer_id": buyer_id, "article_id": article_id}
+        )
+    except Exception as e:
+        print(f"MONGO ERROR CHECKING PURCHASE {buyer_id}/{article_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load article")
+
+    return purchase is not None
 
 
 async def aggregate_sales_stats(author_id):
@@ -231,7 +239,7 @@ async def aggregate_sales_stats(author_id):
         rows = await get_db().purchases.aggregate(pipeline).to_list(None)
     except Exception as e:
         print(f"MONGO ERROR AGGREGATING SALES for {author_id}: {e}")
-        return {}
+        raise HTTPException(status_code=500, detail="Failed to load sales stats")
 
     stats = {}
     for row in rows:
@@ -253,26 +261,32 @@ async def insert_article(article_doc):
 async def apply_article_update(article_id, updates):
     updates["updated_at"] = datetime.now(timezone.utc)
     try:
-        await get_db().articles.update_one({"_id": article_id}, {"$set": updates})
+        result = await get_db().articles.update_one({"_id": article_id}, {"$set": updates})
     except Exception as e:
         print(f"MONGO ERROR UPDATING ARTICLE {article_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update article")
 
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Article not found")
+
 
 async def remove_article(article_id):
     try:
-        await get_db().articles.delete_one({"_id": article_id})
+        result = await get_db().articles.delete_one({"_id": article_id})
     except Exception as e:
         print(f"MONGO ERROR DELETING ARTICLE {article_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete article")
+
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Article not found")
 
 
 #--- validation ---
 
 def validate_create_fields(body):
     return {
-        "title": validate_title(body.title),
-        "summary": validate_summary(body.summary),
+        "title": validate_text_field(body.title, "Title", TITLE_MAX_LENGTH),
+        "summary": validate_text_field(body.summary, "Summary", SUMMARY_MAX_LENGTH),
         "body": validate_body_text(body.body),
         "price_cents": validate_price(body.price_cents),
     }
@@ -281,9 +295,9 @@ def validate_create_fields(body):
 def validate_update_fields(body):
     updates = {}
     if body.title is not None:
-        updates["title"] = validate_title(body.title)
+        updates["title"] = validate_text_field(body.title, "Title", TITLE_MAX_LENGTH)
     if body.summary is not None:
-        updates["summary"] = validate_summary(body.summary)
+        updates["summary"] = validate_text_field(body.summary, "Summary", SUMMARY_MAX_LENGTH)
     if body.body is not None:
         updates["body"] = validate_body_text(body.body)
     if body.price_cents is not None:
@@ -296,18 +310,11 @@ def validate_update_fields(body):
     return updates
 
 
-def validate_title(title):
-    title = title.strip()
-    if not title or len(title) > TITLE_MAX_LENGTH:
-        raise HTTPException(status_code=422, detail=f"Title must be 1-{TITLE_MAX_LENGTH} characters")
-    return title
-
-
-def validate_summary(summary):
-    summary = summary.strip()
-    if not summary or len(summary) > SUMMARY_MAX_LENGTH:
-        raise HTTPException(status_code=422, detail=f"Summary must be 1-{SUMMARY_MAX_LENGTH} characters")
-    return summary
+def validate_text_field(value, label, max_length):
+    value = value.strip()
+    if not value or len(value) > max_length:
+        raise HTTPException(status_code=422, detail=f"{label} must be 1-{max_length} characters")
+    return value
 
 
 def validate_body_text(body_text):
@@ -366,12 +373,18 @@ def serialize_teaser(article, author_names, owned):
     }
 
 
+def serialize_admin_teaser(article, author_names):
+    item = serialize_teaser(article, author_names, owned=True)
+    item["status"] = article["status"]
+    return item
+
+
 def serialize_detail(article, author_names, owned, user):
     # The ONLY place `body` is ever serialized (SPEC content invariant).
     item = serialize_teaser(article, author_names, owned)
     if owned:
         item["body"] = article["body"]
-    if user is not None and (user["is_admin"] or article["author_id"] == user["_id"]):
+    if is_author_or_admin(article, user):
         item["status"] = article["status"]
     return item
 

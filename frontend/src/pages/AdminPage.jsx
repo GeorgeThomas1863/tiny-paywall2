@@ -4,7 +4,8 @@ import { deleteArticle, fetchAllArticles, updateArticle } from '../api/articles-
 import { formatCents } from '../format.js'
 
 function AdminPage({ user }) {
-  const [articles, setArticles] = useState(null)
+  // undefined = loading, null = failed, array = loaded
+  const [articles, setArticles] = useState()
   const [error, setError] = useState(null)
 
   const loadArticles = () => {
@@ -16,7 +17,8 @@ function AdminPage({ user }) {
   }, [user])
 
   if (!user?.is_admin) return <p>Admin only.</p>
-  if (articles === null) return <p>Loading all articles...</p>
+  if (articles === undefined) return <p>Loading all articles...</p>
+  if (articles === null) return <p role="alert">Couldn't load articles. Try refreshing.</p>
 
   const handleToggleStatus = async (article) => {
     const nextStatus = article.status === 'published' ? 'draft' : 'published'
