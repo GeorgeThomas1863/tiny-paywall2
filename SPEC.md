@@ -581,10 +581,10 @@ CORS methods+credentials, Dockerfile installs from pyproject, dotenv, root clean
    `verify_db_connection()` with the transaction probe. Document local setup in README.
 2. Add `stripe` to pyproject. Add `FRONTEND_URL`, `STRIPE_SECRET_KEY`,
    `STRIPE_WEBHOOK_SECRET` pass-through to compose.
-3. `money/operations.py`: `credit_topup(user_id, amount_cents, stripe_session_id)`,
-   `execute_purchase(buyer, article)`, `reserve_payout(user, destination)`,
-   `return_payout(request)` — each per §2.4, each a single transaction, each returning
-   `{success, message}`.
+3. `money/operations.py`: `credit_topup(user_id, amount_cents, stripe_session_id)` and
+   `execute_purchase(buyer, article)` — each per §2.4, each a single transaction,
+   each returning `{success, message}`. (`reserve_payout`/`return_payout` are built in
+   Phase E alongside their routes and tests — money code never lands untested.)
 4. `ensure_indexes()`: ledger indexes (user_id; stripe_session_id partial unique).
 5. `routes/wallet.py` (topup checkout + history), `routes/purchases.py`,
    `routes/stripe_webhook.py` per §4.4–4.5.

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { fetchMe, logoutUser } from './api/auth-api.js'
 import NavBar from './components/NavBar.jsx'
+import AccountPage from './pages/AccountPage.jsx'
 import AdminPage from './pages/AdminPage.jsx'
 import ArticleEditor from './pages/ArticleEditor.jsx'
 import ArticleList from './pages/ArticleList.jsx'
@@ -36,8 +37,19 @@ function App() {
       <main>
         <Routes>
           <Route path="/" element={<ArticleList />} />
-          <Route path="/articles/:articleId" element={<ArticleView />} />
+          <Route
+            path="/articles/:articleId"
+            element={<ArticleView user={user} onUserChange={refreshUser} />}
+          />
           <Route path="/login" element={<AuthPage onAuthed={refreshUser} />} />
+          <Route
+            path="/account"
+            element={
+              <RequireUser user={user}>
+                <AccountPage user={user} onUserChange={refreshUser} />
+              </RequireUser>
+            }
+          />
           <Route path="/write" element={<RequireUser user={user}><MyArticles /></RequireUser>} />
           <Route path="/write/new" element={<RequireUser user={user}><ArticleEditor /></RequireUser>} />
           <Route path="/write/:articleId" element={<RequireUser user={user}><ArticleEditor /></RequireUser>} />

@@ -10,6 +10,9 @@ from db.connection import verify_db_connection, ensure_indexes
 from routes.articles import router as articles_router
 from routes.auth import router as auth_router
 from routes.hello import router as hello_router
+from routes.purchases import router as purchases_router
+from routes.stripe_webhook import router as stripe_webhook_router
+from routes.wallet import router as wallet_router
 
 
 @asynccontextmanager
@@ -31,6 +34,9 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(articles_router)
+app.include_router(wallet_router)
+app.include_router(purchases_router)
+app.include_router(stripe_webhook_router)
 app.include_router(hello_router)
 
 

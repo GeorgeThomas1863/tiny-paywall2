@@ -25,6 +25,24 @@ async def verify_db_connection():
         print(f"MongoDB connection failed: {e}")
         raise
 
+    await verify_transactions_supported()
+
+
+async def verify_transactions_supported():
+    try:
+        client = get_db_client()
+        db = get_db()
+        async with await client.start_session() as session:
+            async with session.start_transaction():
+                await db.users.find_one({}, session=session)
+        print("MongoDB transactions supported")
+    except Exception as e:
+        print(
+            "MongoDB transactions unavailable — Mongo must run as a (single-node) "
+            f"replica set; see README 'Mongo replica set' setup. Error: {e}"
+        )
+        raise
+
 
 async def ensure_indexes():
     try:
@@ -39,6 +57,12 @@ async def ensure_indexes():
             [("buyer_id", 1), ("article_id", 1)], unique=True
         )
         await db.purchases.create_index("author_id")
+        await db.ledger.create_index("user_id")
+        await db.ledger.create_index(
+            "stripe_session_id",
+            unique=True,
+            partialFilterExpression={"stripe_session_id": {"$exists": True}},
+        )
         print("MongoDB indexes ensured")
     except Exception as e:
         print(f"MongoDB index creation failed: {e}")

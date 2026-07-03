@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 os.environ["DB_NAME"] = f"{os.environ['DB_NAME']}_test"
+os.environ.setdefault("STRIPE_SECRET_KEY", "sk_test_dummy")
+os.environ.setdefault("STRIPE_WEBHOOK_SECRET", "whsec_test_dummy")
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
