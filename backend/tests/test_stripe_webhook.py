@@ -19,15 +19,26 @@ def sign_payload(payload, secret):
     return f"t={timestamp},v1={signature}"
 
 
-def build_checkout_event(user_id, amount_cents, session_id):
+def build_checkout_event(
+    user_id,
+    amount_cents,
+    session_id,
+    payment_status="paid",
+    amount_total=None,
+    event_type="checkout.session.completed",
+):
+    if amount_total is None:
+        amount_total = amount_cents
     return json.dumps({
         "id": "evt_test_1",
         "object": "event",
-        "type": "checkout.session.completed",
+        "type": event_type,
         "data": {
             "object": {
                 "id": session_id,
                 "object": "checkout.session",
+                "payment_status": payment_status,
+                "amount_total": amount_total,
                 "metadata": {"user_id": str(user_id), "amount_cents": str(amount_cents)},
             }
         },
@@ -93,6 +104,75 @@ async def test_missing_signature_rejected(client):
     response = await client.post("/stripe/webhook", content=payload)
 
     assert response.status_code == 400
+
+
+async def test_unpaid_session_not_credited(client):
+    alice = await register_user(client, *ALICE)
+    payload = build_checkout_event(alice["_id"], 500, "cs_unpaid", payment_status="unpaid")
+
+    response = await post_webhook(client, payload)
+
+    assert response.status_code == 200
+    user = await get_db().users.find_one({"_id": alice["_id"]})
+    assert user["wallet_cents"] == 0
+    assert await get_db().ledger.count_documents({}) == 0
+
+
+async def test_amount_total_mismatch_not_credited(client):
+    alice = await register_user(client, *ALICE)
+    payload = build_checkout_event(alice["_id"], 500, "cs_mismatch", amount_total=100)
+
+    response = await post_webhook(client, payload)
+
+    assert response.status_code == 200
+    user = await get_db().users.find_one({"_id": alice["_id"]})
+    assert user["wallet_cents"] == 0
+    assert await get_db().ledger.count_documents({}) == 0
+
+
+async def test_non_preset_amount_not_credited(client):
+    alice = await register_user(client, *ALICE)
+    payload = build_checkout_event(alice["_id"], 12345, "cs_nonpreset")
+
+    response = await post_webhook(client, payload)
+
+    assert response.status_code == 200
+    user = await get_db().users.find_one({"_id": alice["_id"]})
+    assert user["wallet_cents"] == 0
+    assert await get_db().ledger.count_documents({}) == 0
+
+
+async def test_malformed_user_id_ignored_not_500(client):
+    await register_user(client, *ALICE)
+    payload = build_checkout_event("not-an-objectid", 500, "cs_malformed")
+
+    response = await post_webhook(client, payload)
+
+    assert response.status_code == 200
+    assert await get_db().ledger.count_documents({}) == 0
+
+
+async def test_async_payment_succeeded_credits(client):
+    alice = await register_user(client, *ALICE)
+    payload = build_checkout_event(
+        alice["_id"], 500, "cs_async", event_type="checkout.session.async_payment_succeeded"
+    )
+
+    response = await post_webhook(client, payload)
+
+    assert response.status_code == 200
+    user = await get_db().users.find_one({"_id": alice["_id"]})
+    assert user["wallet_cents"] == 500
+
+
+async def test_missing_user_returns_500_for_stripe_retry(client):
+    await register_user(client, *ALICE)
+    payload = build_checkout_event("0" * 24, 500, "cs_ghost_user")
+
+    response = await post_webhook(client, payload)
+
+    assert response.status_code == 500
+    assert await get_db().ledger.count_documents({}) == 0
 
 
 async def test_unhandled_event_type_ignored(client):

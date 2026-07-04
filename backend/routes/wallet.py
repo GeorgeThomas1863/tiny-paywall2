@@ -11,6 +11,7 @@ from db.connection import get_db
 
 router = APIRouter()
 
+# Mirrored in frontend/src/pages/AccountPage.jsx TOPUP_OPTIONS_CENTS — keep in sync.
 TOPUP_AMOUNTS_CENTS = (500, 1000, 2000)
 
 

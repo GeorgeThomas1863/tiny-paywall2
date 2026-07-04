@@ -11,6 +11,10 @@ class InsufficientFunds(Exception):
     pass
 
 
+class MissingAccount(Exception):
+    pass
+
+
 #--- operations (the ONLY functions that change balances — SPEC §2.4) ---
 
 async def credit_topup(user_id, amount_cents, stripe_session_id):
@@ -19,9 +23,11 @@ async def credit_topup(user_id, amount_cents, stripe_session_id):
         entry = build_ledger_entry(user_id, "wallet", amount_cents, "topup")
         entry["stripe_session_id"] = stripe_session_id
         await db.ledger.insert_one(entry, session=session)
-        await db.users.update_one(
+        result = await db.users.update_one(
             {"_id": user_id}, {"$inc": {"wallet_cents": amount_cents}}, session=session
         )
+        if result.matched_count == 0:
+            raise MissingAccount()
 
     try:
         await run_transaction(apply_topup)
@@ -29,6 +35,9 @@ async def credit_topup(user_id, amount_cents, stripe_session_id):
     except DuplicateKeyError:
         # Webhook replay: the ledger's unique stripe_session_id index already recorded it.
         return {"success": True, "message": "Top-up already credited"}
+    except MissingAccount:
+        print(f"MONEY ERROR: TOPUP {stripe_session_id} FOR MISSING USER {user_id}")
+        return {"success": False, "message": "No such user for top-up", "status_code": 500}
     except Exception as e:
         print(f"MONEY ERROR CREDITING TOPUP {stripe_session_id} for {user_id}: {e}")
         return {"success": False, "message": "Failed to credit wallet", "status_code": 500}
@@ -51,11 +60,13 @@ async def execute_purchase(buyer, article):
         purchase_doc = build_purchase_doc(buyer["_id"], article, author_cents, platform_cents)
         inserted = await db.purchases.insert_one(purchase_doc, session=session)
 
-        await db.users.update_one(
+        credited = await db.users.update_one(
             {"_id": article["author_id"]},
             {"$inc": {"earnings_cents": author_cents}},
             session=session,
         )
+        if credited.matched_count == 0:
+            raise MissingAccount()
 
         buyer_entry = build_ledger_entry(buyer["_id"], "wallet", -price_cents, "purchase")
         buyer_entry["purchase_id"] = inserted.inserted_id
@@ -63,8 +74,7 @@ async def execute_purchase(buyer, article):
             article["author_id"], "earnings", author_cents, "sale"
         )
         author_entry["purchase_id"] = inserted.inserted_id
-        await db.ledger.insert_one(buyer_entry, session=session)
-        await db.ledger.insert_one(author_entry, session=session)
+        await db.ledger.insert_many([buyer_entry, author_entry], session=session)
 
     try:
         await run_transaction(apply_purchase)
@@ -81,6 +91,9 @@ async def execute_purchase(buyer, article):
             "message": "You already own this article",
             "status_code": 409,
         }
+    except MissingAccount:
+        print(f"MONEY ERROR: SALE OF {article['_id']} TO MISSING AUTHOR {article['author_id']}")
+        return {"success": False, "message": "Author account missing", "status_code": 500}
     except Exception as e:
         print(f"MONEY ERROR PURCHASING {article['_id']} by {buyer['_id']}: {e}")
         return {"success": False, "message": "Purchase failed", "status_code": 500}

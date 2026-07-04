@@ -27,8 +27,13 @@ function ArticleView({ user, onUserChange }) {
       setError(result.message)
       return
     }
-    setArticle(await fetchArticle(articleId))
-    await onUserChange()
+
+    const [fresh] = await Promise.all([fetchArticle(articleId), onUserChange()])
+    if (fresh === null) {
+      setError('Purchase complete — refresh the page to read your article.')
+      return
+    }
+    setArticle(fresh)
   }
 
   if (article === undefined) return <p>Loading article...</p>

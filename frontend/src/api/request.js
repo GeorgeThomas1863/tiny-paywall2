@@ -33,7 +33,7 @@ export const sendOperation = async (path, options, fallbackMessage) => {
   return data;
 };
 
-export const extractErrorMessage = (data, fallback) => {
+const extractErrorMessage = (data, fallback) => {
   if (!data) return fallback;
   if (typeof data.detail === "string") return data.detail;
   if (typeof data.message === "string") return data.message;

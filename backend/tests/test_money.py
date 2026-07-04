@@ -147,6 +147,43 @@ async def test_penny_article_pays_author_full_cent(make_client):
     await assert_ledger_matches_balances()
 
 
+async def test_topup_to_missing_user_fails_without_ledger_row(make_client):
+    from bson import ObjectId
+
+    from money.operations import credit_topup
+
+    result = await credit_topup(ObjectId(), 500, "cs_ghost")
+
+    assert result["success"] is False
+    assert result["status_code"] == 500
+    assert await get_db().ledger.count_documents({}) == 0
+
+
+async def test_purchase_with_missing_author_aborts_fully(make_client):
+    from money.operations import execute_purchase
+
+    alice_client = await make_client()
+    bob_client = await make_client()
+    alice = await register_user(alice_client, *ALICE)
+    bob = await register_user(bob_client, *BOB)
+
+    await create_published_article(alice_client, price_cents=25)
+    article = await get_db().articles.find_one({})
+    await fund_wallet(bob["_id"], 500, "cs_orphan_fund")
+    await get_db().users.delete_one({"_id": alice["_id"]})
+
+    result = await execute_purchase(bob, article)
+
+    assert result["success"] is False
+    assert result["status_code"] == 500
+
+    buyer = await get_db().users.find_one({"_id": bob["_id"]})
+    assert buyer["wallet_cents"] == 500
+    assert await get_db().purchases.count_documents({}) == 0
+    assert await get_db().ledger.count_documents({}) == 1  # only bob's top-up
+    await assert_ledger_matches_balances()
+
+
 async def test_ledger_invariant_after_operation_sequence(make_client):
     from money.operations import execute_purchase
 

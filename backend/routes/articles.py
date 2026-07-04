@@ -77,8 +77,9 @@ async def read_article(article_id: str, user=Depends(optional_auth)):
     article = await find_article_or_404(article_id)
     reject_hidden_draft(article, user)
 
-    owned = await resolve_owned(article, user)
-    author_names = await map_author_names([article])
+    owned, author_names = await asyncio.gather(
+        resolve_owned(article, user), map_author_names([article])
+    )
     return serialize_detail(article, author_names, owned, user)
 
 
