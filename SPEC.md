@@ -11,6 +11,8 @@ the ordered steps to build it. `CLAUDE.md` describes how the code works *today*;
 file describes the target and the path. **We build test-driven** — the testing
 strategy is §8, the build phases are §9; follow them in order.
 
+Built with fable
+
 ---
 
 ## 1. Product definition
