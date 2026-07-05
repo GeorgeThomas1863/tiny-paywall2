@@ -1,7 +1,8 @@
 import os
 
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 
+load_dotenv(find_dotenv(".env.local"))  # local overrides, loaded first so they win
 load_dotenv()
 os.environ["DB_NAME"] = f"{os.environ['DB_NAME']}_test"
 os.environ.setdefault("STRIPE_SECRET_KEY", "sk_test_dummy")
