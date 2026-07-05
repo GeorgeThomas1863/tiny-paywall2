@@ -63,6 +63,7 @@ async def ensure_indexes():
             unique=True,
             partialFilterExpression={"stripe_session_id": {"$exists": True}},
         )
+        await db.payout_requests.create_index("user_id")
         print("MongoDB indexes ensured")
     except Exception as e:
         print(f"MongoDB index creation failed: {e}")

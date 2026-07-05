@@ -5,6 +5,7 @@ from pymongo.errors import DuplicateKeyError
 from db.connection import get_db, get_db_client
 
 AUTHOR_SHARE_PERCENT = 80
+PAYOUT_MINIMUM_CENTS = 1000
 
 
 class InsufficientFunds(Exception):
@@ -12,6 +13,10 @@ class InsufficientFunds(Exception):
 
 
 class MissingAccount(Exception):
+    pass
+
+
+class RequestNotPending(Exception):
     pass
 
 
@@ -99,6 +104,83 @@ async def execute_purchase(buyer, article):
         return {"success": False, "message": "Purchase failed", "status_code": 500}
 
 
+async def reserve_payout(user_id, destination):
+    async def apply_reserve(session):
+        db = get_db()
+        # Conditional drain: returns the pre-update doc, or None if below threshold.
+        drained = await db.users.find_one_and_update(
+            {"_id": user_id, "earnings_cents": {"$gte": PAYOUT_MINIMUM_CENTS}},
+            [{"$set": {"earnings_cents": 0}}],
+            session=session,
+        )
+        if drained is None:
+            raise InsufficientFunds()
+
+        amount_cents = drained["earnings_cents"]
+        request_doc = build_payout_request_doc(user_id, amount_cents, destination)
+        inserted = await db.payout_requests.insert_one(request_doc, session=session)
+
+        entry = build_ledger_entry(user_id, "earnings", -amount_cents, "payout_reserve")
+        entry["payout_request_id"] = inserted.inserted_id
+        await db.ledger.insert_one(entry, session=session)
+
+    try:
+        await run_transaction(apply_reserve)
+        return {"success": True, "message": "Payout requested"}
+    except InsufficientFunds:
+        return {
+            "success": False,
+            "message": "Payouts require at least $10.00 of earnings",
+            "status_code": 422,
+        }
+    except Exception as e:
+        print(f"MONEY ERROR RESERVING PAYOUT for {user_id}: {e}")
+        return {"success": False, "message": "Failed to request payout", "status_code": 500}
+
+
+async def return_payout(request_id):
+    async def apply_return(session):
+        db = get_db()
+        # Conditional resolve: only a pending request can be rejected.
+        request = await db.payout_requests.find_one_and_update(
+            {"_id": request_id, "status": "requested"},
+            {"$set": {"status": "rejected", "resolved_at": datetime.now(timezone.utc)}},
+            session=session,
+        )
+        if request is None:
+            raise RequestNotPending()
+
+        credited = await db.users.update_one(
+            {"_id": request["user_id"]},
+            {"$inc": {"earnings_cents": request["amount_cents"]}},
+            session=session,
+        )
+        if credited.matched_count == 0:
+            raise MissingAccount()
+
+        entry = build_ledger_entry(
+            request["user_id"], "earnings", request["amount_cents"], "payout_return"
+        )
+        entry["payout_request_id"] = request_id
+        await db.ledger.insert_one(entry, session=session)
+
+    try:
+        await run_transaction(apply_return)
+        return {"success": True, "message": "Payout rejected — funds returned"}
+    except RequestNotPending:
+        return {
+            "success": False,
+            "message": "Request already resolved",
+            "status_code": 409,
+        }
+    except MissingAccount:
+        print(f"MONEY ERROR: PAYOUT RETURN {request_id} FOR MISSING USER")
+        return {"success": False, "message": "Requester account missing", "status_code": 500}
+    except Exception as e:
+        print(f"MONEY ERROR RETURNING PAYOUT {request_id}: {e}")
+        return {"success": False, "message": "Failed to reject payout", "status_code": 500}
+
+
 #--- helpers ---
 
 async def run_transaction(callback):
@@ -121,6 +203,17 @@ def build_ledger_entry(user_id, balance, amount_cents, entry_type):
         "amount_cents": amount_cents,
         "type": entry_type,
         "created_at": datetime.now(timezone.utc),
+    }
+
+
+def build_payout_request_doc(user_id, amount_cents, destination):
+    return {
+        "user_id": user_id,
+        "amount_cents": amount_cents,
+        "destination": destination,
+        "status": "requested",
+        "created_at": datetime.now(timezone.utc),
+        "resolved_at": None,
     }
 
 

@@ -1,0 +1,189 @@
+/* Clean, minimal styling on semantic elements — the markup is class-free (SPEC §9E-2). */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #1c1c1c;
+  background: #fff;
+}
+
+/*--- layout ---*/
+
+main {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+}
+
+nav {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e2e2e2;
+}
+
+nav > a:first-child {
+  margin-right: auto;
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: #1c1c1c;
+}
+
+nav span {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/*--- typography ---*/
+
+h1 {
+  font-size: 1.6rem;
+  line-height: 1.25;
+  margin: 0 0 1rem;
+}
+
+h2 {
+  font-size: 1.2rem;
+  margin: 1.75rem 0 0.5rem;
+}
+
+h3 {
+  font-size: 1rem;
+  margin: 1.25rem 0 0.5rem;
+}
+
+a {
+  color: #0b57d0;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+[role='alert'] {
+  color: #b3261e;
+}
+
+/*--- article list cards ---*/
+
+section > article {
+  padding: 1rem 0;
+  border-bottom: 1px solid #ececec;
+}
+
+section > article h2 {
+  margin: 0 0 0.25rem;
+}
+
+section > article p {
+  margin: 0.25rem 0;
+  color: #444;
+}
+
+/*--- tables ---*/
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0 1rem;
+}
+
+th {
+  text-align: left;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #666;
+}
+
+th,
+td {
+  padding: 0.5rem 0.75rem 0.5rem 0;
+  border-bottom: 1px solid #ececec;
+  vertical-align: top;
+}
+
+/*--- forms ---*/
+
+label {
+  display: block;
+  margin: 0 0 1rem;
+  font-weight: 600;
+}
+
+input,
+textarea,
+select {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+  font-weight: 400;
+  color: inherit;
+  border: 1px solid #c8c8c8;
+  border-radius: 6px;
+  background: #fff;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 2px solid #0b57d0;
+  outline-offset: 0;
+  border-color: #0b57d0;
+}
+
+input[type='checkbox'] {
+  display: inline;
+  width: auto;
+  margin-right: 0.4rem;
+}
+
+input[type='number'] {
+  max-width: 10rem;
+}
+
+select {
+  display: inline;
+  width: auto;
+}
+
+/*--- buttons ---*/
+
+button {
+  padding: 0.45rem 0.9rem;
+  font: inherit;
+  color: #fff;
+  background: #1c1c1c;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: #3a3a3a;
+}
+
+button:disabled {
+  background: #e2e2e2;
+  color: #888;
+  cursor: default;
+}
+
+td button,
+nav button {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.85rem;
+}

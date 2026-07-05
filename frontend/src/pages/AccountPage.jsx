@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { fetchMyPayouts, requestPayout } from '../api/payouts-api.js'
 import { fetchWalletHistory, startTopup } from '../api/wallet-api.js'
 import { formatCents } from '../format.js'
 
 // Mirrored in backend/routes/wallet.py TOPUP_AMOUNTS_CENTS — keep in sync.
 const TOPUP_OPTIONS_CENTS = [500, 1000, 2000]
+// Mirrored in backend/money/operations.py PAYOUT_MINIMUM_CENTS — keep in sync.
+const PAYOUT_MINIMUM_CENTS = 1000
 const CONFIRM_POLL_MS = 2000
 const CONFIRM_MAX_ATTEMPTS = 10
 
@@ -14,9 +17,11 @@ function AccountPage({ user, onUserChange }) {
   const [error, setError] = useState(null)
   const confirmState = useTopupConfirmation(onUserChange, setHistory)
 
-  useEffect(() => {
+  const loadHistory = () => {
     fetchWalletHistory().then(setHistory)
-  }, [])
+  }
+
+  useEffect(loadHistory, [])
 
   const handleTopup = async (amountCents) => {
     setError(null)
@@ -26,6 +31,13 @@ function AccountPage({ user, onUserChange }) {
       return
     }
     window.location.assign(result.url)
+  }
+
+  // A payout reserve moves earnings into a request — both the ledger and the
+  // balance chip change, so refresh both.
+  const handleBalancesChanged = async () => {
+    loadHistory()
+    await onUserChange()
   }
 
   return (
@@ -45,6 +57,7 @@ function AccountPage({ user, onUserChange }) {
       </p>
 
       <h2>Earnings: {formatCents(user.earnings_cents)}</h2>
+      <PayoutSection user={user} onBalancesChanged={handleBalancesChanged} />
 
       {error && <p role="alert">{error}</p>}
 
@@ -97,6 +110,113 @@ function useTopupConfirmation(onUserChange, onHistoryLoaded) {
 }
 
 //---
+
+function PayoutSection({ user, onBalancesChanged }) {
+  // undefined = loading, null = failed, array = loaded
+  const [payouts, setPayouts] = useState()
+  const [destination, setDestination] = useState('')
+  const [requesting, setRequesting] = useState(false)
+  const [error, setError] = useState(null)
+
+  const loadPayouts = () => {
+    fetchMyPayouts().then(setPayouts)
+  }
+
+  useEffect(loadPayouts, [])
+
+  const handleRequest = async (event) => {
+    event.preventDefault()
+    setError(null)
+    setRequesting(true)
+    const result = await requestPayout(destination)
+    setRequesting(false)
+    if (!result.success) {
+      setError(result.message)
+      return
+    }
+    setDestination('')
+    loadPayouts()
+    await onBalancesChanged()
+  }
+
+  const belowMinimum = user.earnings_cents < PAYOUT_MINIMUM_CENTS
+  const hasPending = Array.isArray(payouts) && payouts.some((p) => p.status === 'requested')
+
+  return (
+    <div>
+      <PayoutRequestForm
+        destination={destination}
+        onDestinationChange={setDestination}
+        onSubmit={handleRequest}
+        belowMinimum={belowMinimum}
+        hasPending={hasPending}
+        requesting={requesting}
+      />
+      {error && <p role="alert">{error}</p>}
+
+      <h3>Payout requests</h3>
+      <PayoutTable payouts={payouts} />
+    </div>
+  )
+}
+
+function PayoutRequestForm({
+  destination, onDestinationChange, onSubmit, belowMinimum, hasPending, requesting,
+}) {
+  if (belowMinimum && !hasPending) {
+    return <p>Payouts unlock at {formatCents(PAYOUT_MINIMUM_CENTS)} of earnings.</p>
+  }
+  if (hasPending) {
+    return <p>A payout request is pending — we'll pay it out shortly.</p>
+  }
+
+  return (
+    <form onSubmit={onSubmit}>
+      <label>
+        Where should we send the money?{' '}
+        <input
+          value={destination}
+          onChange={(event) => onDestinationChange(event.target.value)}
+          placeholder="PayPal: you@example.com"
+          maxLength={200}
+          required
+        />
+      </label>{' '}
+      <button type="submit" disabled={requesting || !destination.trim()}>
+        {requesting ? 'Requesting…' : 'Request payout'}
+      </button>
+    </form>
+  )
+}
+
+function PayoutTable({ payouts }) {
+  if (payouts === undefined) return <p>Loading payout requests…</p>
+  if (payouts === null) return <p role="alert">Couldn't load payout requests. Try refreshing.</p>
+  if (payouts.length === 0) return <p>No payout requests yet.</p>
+
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>When</th>
+          <th>Amount</th>
+          <th>Destination</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {payouts.map((payout) => (
+          <tr key={payout.id}>
+            <td>{new Date(payout.created_at).toLocaleString()}</td>
+            <td>{formatCents(payout.amount_cents)}</td>
+            <td>{payout.destination}</td>
+            <td>{payout.status}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
 
 function ConfirmationNotice({ confirmState }) {
   if (confirmState === 'waiting') return <p>Confirming your payment…</p>
