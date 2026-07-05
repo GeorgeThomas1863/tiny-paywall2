@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { fetchArticles } from '../api/articles-api.js'
-import { formatCents } from '../format.js'
+import { formatCents, formatPoints } from '../format.js'
 
 function ArticleList() {
   // undefined = loading, null = failed, array = loaded
@@ -23,7 +23,8 @@ function ArticleList() {
             <Link to={`/articles/${article.id}`}>{article.title}</Link>
           </h2>
           <p>
-            by {article.author_name} · {formatCents(article.price_cents)}
+            by {article.author_name} · {formatCents(article.price_cents)} ·{' '}
+            {formatPoints(article.score)}
             {article.owned && ' · owned'}
           </p>
           <p>{article.summary}</p>

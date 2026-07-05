@@ -27,6 +27,9 @@ Built with fable
    appears anywhere.
 4. Clicking Unlock debits their wallet and shows the body instantly. Bought articles
    stay readable forever on that account.
+5. A buyer can upvote or downvote any article they purchased — Reddit-style, at any
+   time after purchase, changeable or clearable forever. Every article shows its net
+   score (upvotes − downvotes) publicly; no votes yet displays as 0.
 
 **The author's story:**
 
@@ -58,6 +61,7 @@ directly in the DB, once.
 | Authoring | Every registered user; no approval gate. Admin moderates after the fact. |
 | Prices | 1–500 cents, set per article by the author. Past buyers keep access when price or content changes. |
 | Content format | Plain text bodies, rendered with preserved line breaks. |
+| Votes | Purchasers only (author/admin excluded — no purchase, no vote). One vote per buyer per article, `1` or `-1`, set/changed/cleared anytime. Stored as an optional `vote` field on the purchase doc — the unique `(buyer_id, article_id)` index and the purchase row itself enforce eligibility and one-vote-per-buyer for free. Score = `sum(vote)`, aggregated at read time (no denormalized counters → no drift). |
 | Consistency | Mongo multi-document **transactions** for all money movement → Mongo must run as a single-node replica set (see §7). |
 | Testing | **TDD.** Backend behavior is specified by a pytest suite written test-first, step by step, as each feature is built (§8). Frontend is verified by manual phase checklists (the logic lives in the backend). |
 
@@ -214,6 +218,7 @@ only in production.
   price_cents:     int,        // price at moment of sale
   author_cents:    int,
   platform_cents:  int,
+  vote:            1 | -1,     // optional — absent until the buyer votes; cleared via $unset
   created_at:      datetime
 }
 ```
@@ -243,6 +248,7 @@ only in production.
 | articles | `author_id` | "my articles" queries |
 | purchases | `(buyer_id, article_id)` unique | can't double-own; purchase idempotency |
 | purchases | `author_id` | per-author sales stats |
+| purchases | `article_id` | score aggregation |
 | ledger | `user_id` | history queries |
 | ledger | `stripe_session_id` unique, partial (field exists) | webhook replay idempotency |
 | payout_requests | `user_id` | "my payouts" queries |
@@ -273,6 +279,7 @@ backend/
     articles.py         # public list/read + author CRUD + admin moderation
     wallet.py           # top-up checkout + history
     purchases.py        # buy an article
+    votes.py            # purchaser up/downvotes on articles
     payouts.py          # request + mine + admin queue/resolve
     stripe_webhook.py   # POST /stripe/webhook
 ```
@@ -308,8 +315,8 @@ clauses, then named helper calls — no inline money logic anywhere outside
 
 | Route | Auth | Behavior |
 |---|---|---|
-| `GET /articles` | optional | Published only, newest first. Items: `{id, title, summary, price_cents, author_name, created_at, owned}`. `owned` = entitlement rule. **No `body`, ever, in lists.** |
-| `GET /articles/{id}` | optional | Teaser fields + `owned` (+ `status` and `price_cents` editable context when caller is author/admin). `body` included **only** if entitled. Drafts → 404 for everyone except author/admin. |
+| `GET /articles` | optional | Published only, newest first. Items: `{id, title, summary, price_cents, author_name, created_at, owned, score}`. `owned` = entitlement rule. `score` = net votes (0 when none). **No `body`, ever, in lists.** |
+| `GET /articles/{id}` | optional | Teaser fields + `owned` + `score` + `my_vote` (+ `status` and `price_cents` editable context when caller is author/admin). `my_vote` is `1`/`-1`/`0` when the caller purchased the article (0 = no vote yet), `null` otherwise — the frontend's signal to render vote controls. `body` included **only** if entitled. Drafts → 404 for everyone except author/admin. |
 | `GET /articles/mine` | session | All caller's articles, any status, plus per-article `sales_count` and `earned_cents` (one aggregation over purchases). |
 | `GET /articles/all` | admin | Every article, any status, any author (teaser fields + status + author_name, no bodies) — feeds the admin moderation table. |
 | `POST /articles` | session | Create as `draft`. Validate title/summary/body/price (§3 bounds). → `{success, message, id}` |
@@ -328,6 +335,12 @@ clauses, then named helper calls — no inline money logic anywhere outside
 | Route | Auth | Behavior |
 |---|---|---|
 | `POST /purchases` | session | Body: `{article_id}`. Guards (§2.4), then `execute_purchase` transaction. → `{success, message}`; 402 insufficient funds; 409 already owned. |
+
+**`routes/votes.py`**
+
+| Route | Auth | Behavior |
+|---|---|---|
+| `PUT /articles/{article_id}/vote` | session | Body: `{value: 1 \| -1 \| 0}` — idempotent "set my vote"; `0` clears it (`$unset`). Guards: article exists (404) → value valid (422) → `update_one` on the caller's purchase doc; no matching purchase → 403 "Only buyers can vote" (covers author/admin/non-buyers structurally). Purchasers keep voting rights if the article is later unpublished — consistent with buyers-keep-access. → `{success, message, score, my_vote}` (score re-aggregated after the write so the frontend updates without a refetch). |
 
 **`routes/payouts.py`**
 
@@ -376,7 +389,7 @@ frontend/src/
   api/
     request.js          # shared fetch helper: base URL, credentials:'include',
                         # JSON, throws {status, message} on !ok — every call uses it
-    auth-api.js  articles-api.js  wallet-api.js  purchases-api.js  payouts-api.js
+    auth-api.js  articles-api.js  wallet-api.js  purchases-api.js  votes-api.js  payouts-api.js
   pages/
     ArticleList.jsx     # "/"          teaser cards
     ArticleView.jsx     # "/articles/:id"  read, or teaser + unlock
@@ -397,12 +410,15 @@ frontend/src/
 
 ### 5.2 Page behavior
 
-- **ArticleList** — cards: title, summary, byline, price; button per entitlement:
-  "Read" (owned) / "Unlock 25¢" / "Login to buy". Author's own show "Yours".
+- **ArticleList** — cards: title, summary, byline, price, score; button per
+  entitlement: "Read" (owned) / "Unlock 25¢" / "Login to buy". Author's own show "Yours".
 - **ArticleView** — body present → render (preserved line breaks). Else teaser +
   unlock button. Unlock → `POST /purchases` → success: refetch article + `user`
   (balance chip updates). 402 → inline "balance 10¢, price 25¢ — add funds" → /account.
-  Never redirects to Stripe from here.
+  Never redirects to Stripe from here. Score always shown; vote controls (▲ score ▼)
+  rendered only when `my_vote !== null`: clicking the inactive arrow sets that vote,
+  clicking the active arrow clears it (sends `0`); update `score`/`my_vote` from the
+  PUT response, no refetch.
 - **AuthPage** — login/register toggle (register adds display name). On success,
   return whence they came.
 - **AccountPage** — wallet balance + three top-up buttons (each → `POST /wallet/topup`
@@ -490,7 +506,7 @@ disagree, fix one of them deliberately, never silently.
 backend/tests/
   conftest.py            # test-DB env override, index setup, cleanup, client + auth fixtures
   test_auth.py  test_articles.py  test_money.py  test_wallet.py
-  test_purchases.py  test_payouts.py  test_stripe_webhook.py
+  test_purchases.py  test_votes.py  test_payouts.py  test_stripe_webhook.py
 ```
 
 ### Stripe in tests
@@ -628,6 +644,26 @@ CORS methods+credentials, Dockerfile installs from pyproject, dotenv, root clean
    **Manual:** full §1 walkthrough — fresh browser, two accounts (author + reader) +
    admin: write → publish → top up → buy → read → earnings → payout → mark paid.
    Zero console errors throughout. Full suite green one last time.
+
+### Phase F — Votes
+
+1. `routes/votes.py` per §4.4; `ensure_indexes()` gains `purchases.article_id`;
+   register router in `main.py`.
+2. `routes/articles.py`: score aggregation query (`$match` article ids → `$group` by
+   `article_id` → `$sum: "$vote"`; missing row → 0 in the serializer, same pattern as
+   sales stats); `score` on teasers and detail; `my_vote` on detail (refactor the
+   purchase-existence check to return the purchase doc so `owned` and `my_vote` come
+   from one query).
+3. Frontend: `votes-api.js`; score on `ArticleList` cards; vote controls on
+   `ArticleView` per §5.2; vote-button styling.
+4. **Tests (`test_votes.py`, written before steps 1–2):** vote requires auth → 401;
+   non-purchaser and the author → 403; purchaser upvotes → 200, detail shows
+   `score: 1`, `my_vote: 1`; switching up→down flips score 1 → −1 (no double count);
+   `value: 0` clears → score 0; invalid value → 422; missing article → 404; two
+   buyers voting opposite ways → score 0; listing carries `score`; non-purchaser
+   detail has `my_vote: null`; article with no votes → `score: 0`.
+   **Manual:** buy with a smoke account, vote up, toggle to down, clear; score
+   visible on list and detail, logged out too; author sees score but no controls.
 
 ---
 

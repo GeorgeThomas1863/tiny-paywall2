@@ -57,6 +57,7 @@ async def ensure_indexes():
             [("buyer_id", 1), ("article_id", 1)], unique=True
         )
         await db.purchases.create_index("author_id")
+        await db.purchases.create_index("article_id")
         await db.ledger.create_index("user_id")
         await db.ledger.create_index(
             "stripe_session_id",

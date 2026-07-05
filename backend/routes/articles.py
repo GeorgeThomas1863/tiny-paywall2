@@ -38,14 +38,17 @@ class ArticleUpdateBody(BaseModel):
 @router.get("/articles")
 async def list_articles(user=Depends(optional_auth)):
     articles = await find_published_articles()
-    author_names, purchased_ids = await asyncio.gather(
-        map_author_names(articles), find_purchased_article_ids(user, articles)
+    article_ids = [article["_id"] for article in articles]
+    author_names, purchased_ids, scores = await asyncio.gather(
+        map_author_names(articles),
+        find_purchased_article_ids(user, articles),
+        aggregate_scores(article_ids),
     )
 
     items = []
     for article in articles:
         owned = is_author_or_admin(article, user) or article["_id"] in purchased_ids
-        items.append(serialize_teaser(article, author_names, owned))
+        items.append(serialize_teaser(article, author_names, owned, scores))
     return items
 
 
@@ -64,11 +67,14 @@ async def list_my_articles(user=Depends(require_auth)):
 @router.get("/articles/all")
 async def list_all_articles(user=Depends(require_admin)):
     articles = await find_all_articles()
-    author_names = await map_author_names(articles)
+    article_ids = [article["_id"] for article in articles]
+    author_names, scores = await asyncio.gather(
+        map_author_names(articles), aggregate_scores(article_ids)
+    )
 
     items = []
     for article in articles:
-        items.append(serialize_admin_teaser(article, author_names))
+        items.append(serialize_admin_teaser(article, author_names, scores))
     return items
 
 
@@ -77,10 +83,13 @@ async def read_article(article_id: str, user=Depends(optional_auth)):
     article = await find_article_or_404(article_id)
     reject_hidden_draft(article, user)
 
-    owned, author_names = await asyncio.gather(
-        resolve_owned(article, user), map_author_names([article])
+    purchase, author_names, scores = await asyncio.gather(
+        find_purchase(user, article["_id"]),
+        map_author_names([article]),
+        aggregate_scores([article["_id"]]),
     )
-    return serialize_detail(article, author_names, owned, user)
+    owned = is_author_or_admin(article, user) or purchase is not None
+    return serialize_detail(article, author_names, owned, user, scores, purchase)
 
 
 @router.post("/articles")
@@ -119,12 +128,6 @@ def is_author_or_admin(article, user):
     return user["is_admin"] or article["author_id"] == user["_id"]
 
 
-async def resolve_owned(article, user):
-    if is_author_or_admin(article, user):
-        return True
-    if user is None:
-        return False
-    return await has_purchased(user["_id"], article["_id"])
 
 
 def reject_hidden_draft(article, user):
@@ -215,16 +218,37 @@ async def find_purchased_article_ids(user, articles):
     return {purchase["article_id"] for purchase in purchases}
 
 
-async def has_purchased(buyer_id, article_id):
+async def find_purchase(user, article_id):
+    if user is None:
+        return None
+
     try:
-        purchase = await get_db().purchases.find_one(
-            {"buyer_id": buyer_id, "article_id": article_id}
+        return await get_db().purchases.find_one(
+            {"buyer_id": user["_id"], "article_id": article_id}
         )
     except Exception as e:
-        print(f"MONGO ERROR CHECKING PURCHASE {buyer_id}/{article_id}: {e}")
+        print(f"MONGO ERROR CHECKING PURCHASE {user['_id']}/{article_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to load article")
 
-    return purchase is not None
+
+async def aggregate_scores(article_ids):
+    if not article_ids:
+        return {}
+
+    pipeline = [
+        {"$match": {"article_id": {"$in": article_ids}, "vote": {"$exists": True}}},
+        {"$group": {"_id": "$article_id", "score": {"$sum": "$vote"}}},
+    ]
+    try:
+        rows = await get_db().purchases.aggregate(pipeline).to_list(None)
+    except Exception as e:
+        print(f"MONGO ERROR AGGREGATING SCORES: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load scores")
+
+    scores = {}
+    for row in rows:
+        scores[row["_id"]] = row["score"]
+    return scores
 
 
 async def aggregate_sales_stats(author_id):
@@ -362,7 +386,7 @@ def build_article_doc(author_id, fields):
     }
 
 
-def serialize_teaser(article, author_names, owned):
+def serialize_teaser(article, author_names, owned, scores):
     return {
         "id": str(article["_id"]),
         "title": article["title"],
@@ -371,23 +395,31 @@ def serialize_teaser(article, author_names, owned):
         "author_name": author_names.get(article["author_id"], "Unknown"),
         "created_at": article["created_at"].isoformat(),
         "owned": owned,
+        "score": scores.get(article["_id"], 0),
     }
 
 
-def serialize_admin_teaser(article, author_names):
-    item = serialize_teaser(article, author_names, owned=True)
+def serialize_admin_teaser(article, author_names, scores):
+    item = serialize_teaser(article, author_names, True, scores)
     item["status"] = article["status"]
     return item
 
 
-def serialize_detail(article, author_names, owned, user):
+def serialize_detail(article, author_names, owned, user, scores, purchase):
     # The ONLY place `body` is ever serialized (SPEC content invariant).
-    item = serialize_teaser(article, author_names, owned)
+    item = serialize_teaser(article, author_names, owned, scores)
+    item["my_vote"] = derive_my_vote(purchase)
     if owned:
         item["body"] = article["body"]
     if is_author_or_admin(article, user):
         item["status"] = article["status"]
     return item
+
+
+def derive_my_vote(purchase):
+    if purchase is None:
+        return None
+    return purchase.get("vote", 0)
 
 
 def serialize_mine(article, stats):

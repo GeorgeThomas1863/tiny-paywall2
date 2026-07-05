@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { fetchArticle } from '../api/articles-api.js'
 import { purchaseArticle } from '../api/purchases-api.js'
-import { formatCents } from '../format.js'
+import { voteArticle } from '../api/votes-api.js'
+import { formatCents, formatPoints } from '../format.js'
 
 function ArticleView({ user, onUserChange }) {
   const { articleId } = useParams()
@@ -46,6 +47,7 @@ function ArticleView({ user, onUserChange }) {
       <h1>{article.title}</h1>
       <p>
         by {article.author_name} · {formatCents(article.price_cents)}
+        {article.my_vote === null && ` · ${formatPoints(article.score)}`}
         {canEdit && ` · ${article.status}`}
         {canEdit && (
           <>
@@ -54,6 +56,9 @@ function ArticleView({ user, onUserChange }) {
           </>
         )}
       </p>
+      {article.my_vote !== null && (
+        <VoteControls article={article} onVoted={setArticle} />
+      )}
       <p>{article.summary}</p>
 
       {article.body ? (
@@ -68,6 +73,48 @@ function ArticleView({ user, onUserChange }) {
         />
       )}
     </article>
+  )
+}
+
+function VoteControls({ article, onVoted }) {
+  const [voting, setVoting] = useState(false)
+  const [error, setError] = useState(null)
+
+  const handleVote = async (arrowValue) => {
+    const value = article.my_vote === arrowValue ? 0 : arrowValue
+    setError(null)
+    setVoting(true)
+    const result = await voteArticle(article.id, value)
+    setVoting(false)
+
+    if (!result.success) {
+      setError(result.message)
+      return
+    }
+    onVoted({ ...article, score: result.score, my_vote: result.my_vote })
+  }
+
+  return (
+    <p>
+      <button
+        aria-label="Upvote"
+        aria-pressed={article.my_vote === 1}
+        disabled={voting}
+        onClick={() => handleVote(1)}
+      >
+        ▲
+      </button>{' '}
+      {article.score}{' '}
+      <button
+        aria-label="Downvote"
+        aria-pressed={article.my_vote === -1}
+        disabled={voting}
+        onClick={() => handleVote(-1)}
+      >
+        ▼
+      </button>
+      {error && <span role="alert"> {error}</span>}
+    </p>
   )
 }
 
