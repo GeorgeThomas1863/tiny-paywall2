@@ -10,6 +10,8 @@ import ArticleView from './pages/ArticleView.jsx'
 import AuthPage from './pages/AuthPage.jsx'
 import MyArticles from './pages/MyArticles.jsx'
 
+const MAIN_WIDTH_CLASS = { '/': 'main-wide', '/account': 'main-mid' }
+
 function App() {
   const [user, setUser] = useState(null)
   const [authChecked, setAuthChecked] = useState(false)
@@ -35,7 +37,7 @@ function App() {
   return (
     <>
       <NavBar user={user} onLogout={handleLogout} />
-      <main className={pathname === '/' ? 'main-wide' : undefined}>
+      <main className={MAIN_WIDTH_CLASS[pathname]}>
         <Routes>
           <Route path="/" element={<ArticleList user={user} />} />
           <Route

@@ -40,6 +40,23 @@ main.main-wide {
   max-width: 1180px;
 }
 
+main.main-mid {
+  max-width: 880px;
+}
+
+.panel {
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.panel h3 {
+  margin: 0 0 0.6rem;
+  font-size: 0.95rem;
+}
+
 /*--- top bar ---*/
 
 .topbar {
@@ -290,18 +307,6 @@ main.main-wide {
 
 /*--- landing: right rail ---*/
 
-.rail-panel {
-  padding: 1rem;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-
-.rail-panel h3 {
-  margin: 0 0 0.6rem;
-  font-size: 0.95rem;
-}
-
 .rail-author {
   display: flex;
   align-items: center;
@@ -347,6 +352,217 @@ main.main-wide {
 
   .user-chip {
     display: none;
+  }
+}
+
+/*--- article page ---*/
+
+.article-card {
+  padding: 2rem 2.25rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.article-card h1 {
+  margin: 1rem 0 0.5rem;
+  font-size: 1.9rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.article-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.article-byline {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.article-byline b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.article-head .vote-pill {
+  margin-left: auto;
+}
+
+.vote-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.vote-pill button[aria-pressed],
+.vote-pill button[aria-pressed]:hover:not(:disabled) {
+  padding: 0 0.2rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  background: none;
+  border: none;
+}
+
+.vote-pill button[aria-pressed]:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.vote-pill button[aria-pressed='true'],
+.vote-pill button[aria-pressed='true']:hover:not(:disabled) {
+  color: var(--accent);
+  background: none;
+}
+
+.vote-pill button[aria-label='Downvote'][aria-pressed='true'],
+.vote-pill button[aria-label='Downvote'][aria-pressed='true']:hover:not(:disabled) {
+  color: #b3261e;
+}
+
+.status-chip {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.status-chip.status-requested {
+  color: var(--accent);
+}
+
+.status-chip.status-paid {
+  color: hsl(150 60% 30%);
+}
+
+.status-chip.status-rejected {
+  color: #b3261e;
+}
+
+.lede {
+  margin: 0 0 1.25rem;
+  font-size: 1.1rem;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.article-body {
+  white-space: pre-wrap;
+  font-size: 1.02rem;
+  line-height: 1.7;
+}
+
+.unlock-gate {
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+  text-align: center;
+  background: var(--bg);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+}
+
+.unlock-note {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.unlock-btn {
+  padding: 0.7rem 1.6rem;
+  font-size: 1rem;
+  font-weight: 700;
+  border-radius: var(--radius);
+}
+
+/*--- account page ---*/
+
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.profile-head h1 {
+  margin: 0;
+}
+
+.avatar-lg {
+  width: 56px;
+  height: 56px;
+}
+
+.profile-sub {
+  margin: 0.15rem 0 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.stat-card h2 {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.stat-value {
+  margin: 0.2rem 0 0.75rem;
+  font-size: 1.9rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.stat-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.stat-note {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.amount-in {
+  font-weight: 600;
+  color: hsl(150 60% 30%);
+}
+
+.amount-out {
+  color: var(--muted);
+}
+
+@media (max-width: 640px) {
+  .stat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .article-card {
+    padding: 1.25rem;
   }
 }
 

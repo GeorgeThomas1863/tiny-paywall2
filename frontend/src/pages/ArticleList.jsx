@@ -101,7 +101,7 @@ function TopAuthorsPanel({ articles }) {
 
   return (
     <aside className="rail">
-      <div className="rail-panel">
+      <div className="panel">
         <h3>
           <span aria-hidden="true">🏆</span> Top authors
         </h3>

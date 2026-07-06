@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { fetchMyPayouts, requestPayout } from '../api/payouts-api.js'
 import { fetchWalletHistory, startTopup } from '../api/wallet-api.js'
-import { formatCents } from '../format.js'
+import { avatarGradient, formatCents } from '../format.js'
 
 // Mirrored in backend/routes/wallet.py TOPUP_AMOUNTS_CENTS — keep in sync.
 const TOPUP_OPTIONS_CENTS = [500, 1000, 2000]
@@ -12,8 +12,9 @@ const CONFIRM_POLL_MS = 2000
 const CONFIRM_MAX_ATTEMPTS = 10
 
 function AccountPage({ user, onUserChange }) {
-  // undefined = loading, null = failed, array = loaded
+  // undefined = loading, null = failed, array = loaded (both)
   const [history, setHistory] = useState()
+  const [payouts, setPayouts] = useState()
   const [error, setError] = useState(null)
   const confirmState = useTopupConfirmation(onUserChange, setHistory)
 
@@ -21,7 +22,14 @@ function AccountPage({ user, onUserChange }) {
     fetchWalletHistory().then(setHistory)
   }
 
-  useEffect(loadHistory, [])
+  const loadPayouts = () => {
+    fetchMyPayouts().then(setPayouts)
+  }
+
+  useEffect(() => {
+    loadHistory()
+    loadPayouts()
+  }, [])
 
   const handleTopup = async (amountCents) => {
     setError(null)
@@ -33,36 +41,35 @@ function AccountPage({ user, onUserChange }) {
     window.location.assign(result.url)
   }
 
-  // A payout reserve moves earnings into a request — both the ledger and the
-  // balance chip change, so refresh both.
-  const handleBalancesChanged = async () => {
+  // A payout reserve moves earnings into a request — the requests list, the
+  // ledger, and the balance chip all change, so refresh all three.
+  const handlePayoutRequested = async () => {
+    loadPayouts()
     loadHistory()
     await onUserChange()
   }
 
   return (
     <section>
-      <h1>Account</h1>
+      <ProfileHead user={user} />
 
       <ConfirmationNotice confirmState={confirmState} />
 
-      <h2>Wallet: {formatCents(user.wallet_cents)}</h2>
-      <p>
-        Add funds:{' '}
-        {TOPUP_OPTIONS_CENTS.map((amount) => (
-          <button key={amount} onClick={() => handleTopup(amount)}>
-            {formatCents(amount)}
-          </button>
-        ))}
-      </p>
-
-      <h2>Earnings: {formatCents(user.earnings_cents)}</h2>
-      <PayoutSection user={user} onBalancesChanged={handleBalancesChanged} />
-
+      <div className="stat-grid">
+        <WalletCard user={user} onTopup={handleTopup} />
+        <EarningsCard user={user} payouts={payouts} onRequested={handlePayoutRequested} />
+      </div>
       {error && <p role="alert">{error}</p>}
 
-      <h2>History</h2>
-      <HistoryTable history={history} />
+      <div className="panel">
+        <h3>Payout requests</h3>
+        <PayoutTable payouts={payouts} />
+      </div>
+
+      <div className="panel">
+        <h3>History</h3>
+        <HistoryTable history={history} />
+      </div>
     </section>
   )
 }
@@ -111,18 +118,68 @@ function useTopupConfirmation(onUserChange, onHistoryLoaded) {
 
 //---
 
-function PayoutSection({ user, onBalancesChanged }) {
-  // undefined = loading, null = failed, array = loaded
-  const [payouts, setPayouts] = useState()
+function ProfileHead({ user }) {
+  return (
+    <header className="profile-head">
+      <span
+        className="avatar avatar-lg"
+        style={avatarGradient(user.display_name)}
+        aria-hidden="true"
+      />
+      <div>
+        <h1>{user.display_name}</h1>
+        <p className="profile-sub">
+          {user.email}
+          {user.is_admin && (
+            <>
+              {' '}
+              <span className="status-chip">admin</span>
+            </>
+          )}
+        </p>
+      </div>
+    </header>
+  )
+}
+
+function WalletCard({ user, onTopup }) {
+  return (
+    <div className="panel stat-card">
+      <h2>Wallet</h2>
+      <p className="stat-value">{formatCents(user.wallet_cents)}</p>
+      <p className="stat-actions">
+        Add funds:{' '}
+        {TOPUP_OPTIONS_CENTS.map((amount) => (
+          <button key={amount} onClick={() => onTopup(amount)}>
+            {formatCents(amount)}
+          </button>
+        ))}
+      </p>
+    </div>
+  )
+}
+
+function EarningsCard({ user, payouts, onRequested }) {
+  const belowMinimum = user.earnings_cents < PAYOUT_MINIMUM_CENTS
+  const hasPending = Array.isArray(payouts) && payouts.some((p) => p.status === 'requested')
+
+  return (
+    <div className="panel stat-card">
+      <h2>Earnings</h2>
+      <p className="stat-value">{formatCents(user.earnings_cents)}</p>
+      <PayoutRequestForm
+        belowMinimum={belowMinimum}
+        hasPending={hasPending}
+        onRequested={onRequested}
+      />
+    </div>
+  )
+}
+
+function PayoutRequestForm({ belowMinimum, hasPending, onRequested }) {
   const [destination, setDestination] = useState('')
   const [requesting, setRequesting] = useState(false)
   const [error, setError] = useState(null)
-
-  const loadPayouts = () => {
-    fetchMyPayouts().then(setPayouts)
-  }
-
-  useEffect(loadPayouts, [])
 
   const handleRequest = async (event) => {
     event.preventDefault()
@@ -135,48 +192,27 @@ function PayoutSection({ user, onBalancesChanged }) {
       return
     }
     setDestination('')
-    loadPayouts()
-    await onBalancesChanged()
+    await onRequested()
   }
 
-  const belowMinimum = user.earnings_cents < PAYOUT_MINIMUM_CENTS
-  const hasPending = Array.isArray(payouts) && payouts.some((p) => p.status === 'requested')
-
-  return (
-    <div>
-      <PayoutRequestForm
-        destination={destination}
-        onDestinationChange={setDestination}
-        onSubmit={handleRequest}
-        belowMinimum={belowMinimum}
-        hasPending={hasPending}
-        requesting={requesting}
-      />
-      {error && <p role="alert">{error}</p>}
-
-      <h3>Payout requests</h3>
-      <PayoutTable payouts={payouts} />
-    </div>
-  )
-}
-
-function PayoutRequestForm({
-  destination, onDestinationChange, onSubmit, belowMinimum, hasPending, requesting,
-}) {
   if (belowMinimum && !hasPending) {
-    return <p>Payouts unlock at {formatCents(PAYOUT_MINIMUM_CENTS)} of earnings.</p>
+    return (
+      <p className="stat-note">
+        Payouts unlock at {formatCents(PAYOUT_MINIMUM_CENTS)} of earnings.
+      </p>
+    )
   }
   if (hasPending) {
-    return <p>A payout request is pending — we'll pay it out shortly.</p>
+    return <p className="stat-note">A payout request is pending — we'll pay it out shortly.</p>
   }
 
   return (
-    <form onSubmit={onSubmit}>
+    <form onSubmit={handleRequest}>
       <label>
         Where should we send the money?{' '}
         <input
           value={destination}
-          onChange={(event) => onDestinationChange(event.target.value)}
+          onChange={(event) => setDestination(event.target.value)}
           placeholder="PayPal: you@example.com"
           maxLength={200}
           required
@@ -185,8 +221,18 @@ function PayoutRequestForm({
       <button type="submit" disabled={requesting || !destination.trim()}>
         {requesting ? 'Requesting…' : 'Request payout'}
       </button>
+      {error && <p role="alert">{error}</p>}
     </form>
   )
+}
+
+function ConfirmationNotice({ confirmState }) {
+  if (confirmState === 'waiting') return <p>Confirming your payment…</p>
+  if (confirmState === 'confirmed') return <p>Payment received — balance updated.</p>
+  if (confirmState === 'timeout') {
+    return <p role="alert">Payment is still processing — refresh in a moment.</p>
+  }
+  return null
 }
 
 function PayoutTable({ payouts }) {
@@ -210,21 +256,14 @@ function PayoutTable({ payouts }) {
             <td>{new Date(payout.created_at).toLocaleString()}</td>
             <td>{formatCents(payout.amount_cents)}</td>
             <td>{payout.destination}</td>
-            <td>{payout.status}</td>
+            <td>
+              <span className={`status-chip status-${payout.status}`}>{payout.status}</span>
+            </td>
           </tr>
         ))}
       </tbody>
     </table>
   )
-}
-
-function ConfirmationNotice({ confirmState }) {
-  if (confirmState === 'waiting') return <p>Confirming your payment…</p>
-  if (confirmState === 'confirmed') return <p>Payment received — balance updated.</p>
-  if (confirmState === 'timeout') {
-    return <p role="alert">Payment is still processing — refresh in a moment.</p>
-  }
-  return null
 }
 
 function HistoryTable({ history }) {
@@ -248,7 +287,7 @@ function HistoryTable({ history }) {
             <td>{new Date(entry.created_at).toLocaleString()}</td>
             <td>{entry.type}</td>
             <td>{entry.balance}</td>
-            <td>
+            <td className={entry.amount_cents > 0 ? 'amount-in' : 'amount-out'}>
               {entry.amount_cents > 0 ? '+' : '−'}
               {formatCents(Math.abs(entry.amount_cents))}
             </td>
