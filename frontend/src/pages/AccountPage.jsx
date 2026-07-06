@@ -167,11 +167,15 @@ function EarningsCard({ user, payouts, onRequested }) {
     <div className="panel stat-card">
       <h2>Earnings</h2>
       <p className="stat-value">{formatCents(user.earnings_cents)}</p>
-      <PayoutRequestForm
-        belowMinimum={belowMinimum}
-        hasPending={hasPending}
-        onRequested={onRequested}
-      />
+      {/* hasPending is unknowable until the payouts list loads — showing the
+          form early invites a request that the backend would 409. */}
+      {Array.isArray(payouts) && (
+        <PayoutRequestForm
+          belowMinimum={belowMinimum}
+          hasPending={hasPending}
+          onRequested={onRequested}
+        />
+      )}
     </div>
   )
 }

@@ -191,7 +191,9 @@ function PayoutQueue({ payouts, onResolve }) {
             </td>
             <td>{formatCents(payout.amount_cents)}</td>
             <td>{payout.destination}</td>
-            <td>{payout.status}</td>
+            <td>
+              <span className={`status-chip status-${payout.status}`}>{payout.status}</span>
+            </td>
             <td>
               {payout.status === 'requested' && (
                 <>

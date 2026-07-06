@@ -47,8 +47,9 @@ async def list_articles(user=Depends(optional_auth)):
 
     items = []
     for article in articles:
-        owned = is_author_or_admin(article, user) or article["_id"] in purchased_ids
-        items.append(serialize_teaser(article, author_names, owned, scores))
+        purchased = article["_id"] in purchased_ids
+        owned = is_author_or_admin(article, user) or purchased
+        items.append(serialize_teaser(article, author_names, owned, purchased, scores))
     return items
 
 
@@ -67,14 +68,11 @@ async def list_my_articles(user=Depends(require_auth)):
 @router.get("/articles/all")
 async def list_all_articles(user=Depends(require_admin)):
     articles = await find_all_articles()
-    article_ids = [article["_id"] for article in articles]
-    author_names, scores = await asyncio.gather(
-        map_author_names(articles), aggregate_scores(article_ids)
-    )
+    author_names = await map_author_names(articles)
 
     items = []
     for article in articles:
-        items.append(serialize_admin_teaser(article, author_names, scores))
+        items.append(serialize_admin_teaser(article, author_names))
     return items
 
 
@@ -126,8 +124,6 @@ def is_author_or_admin(article, user):
     if user is None:
         return False
     return user["is_admin"] or article["author_id"] == user["_id"]
-
-
 
 
 def reject_hidden_draft(article, user):
@@ -386,7 +382,7 @@ def build_article_doc(author_id, fields):
     }
 
 
-def serialize_teaser(article, author_names, owned, scores):
+def serialize_teaser(article, author_names, owned, purchased, scores):
     return {
         "id": str(article["_id"]),
         "title": article["title"],
@@ -395,19 +391,28 @@ def serialize_teaser(article, author_names, owned, scores):
         "author_name": author_names.get(article["author_id"], "Unknown"),
         "created_at": article["created_at"].isoformat(),
         "owned": owned,
+        "purchased": purchased,
         "score": scores.get(article["_id"], 0),
     }
 
 
-def serialize_admin_teaser(article, author_names, scores):
-    item = serialize_teaser(article, author_names, True, scores)
-    item["status"] = article["status"]
-    return item
+def serialize_admin_teaser(article, author_names):
+    # Moderation-table row: no entitlement or score fields — the admin UI
+    # renders none of them, so we skip the score aggregation entirely.
+    return {
+        "id": str(article["_id"]),
+        "title": article["title"],
+        "summary": article["summary"],
+        "price_cents": article["price_cents"],
+        "author_name": author_names.get(article["author_id"], "Unknown"),
+        "created_at": article["created_at"].isoformat(),
+        "status": article["status"],
+    }
 
 
 def serialize_detail(article, author_names, owned, user, scores, purchase):
     # The ONLY place `body` is ever serialized (SPEC content invariant).
-    item = serialize_teaser(article, author_names, owned, scores)
+    item = serialize_teaser(article, author_names, owned, purchase is not None, scores)
     item["my_vote"] = derive_my_vote(purchase)
     if owned:
         item["body"] = article["body"]

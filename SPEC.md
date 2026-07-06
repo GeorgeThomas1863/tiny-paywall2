@@ -26,7 +26,8 @@ Built with fable
    They top up $5 / $10 / $20 via Stripe Checkout — that is the only moment a card
    appears anywhere.
 4. Clicking Unlock debits their wallet and shows the body instantly. Bought articles
-   stay readable forever on that account.
+   stay readable on that account for as long as they remain published — unpublishing
+   hides an article from everyone but its author and admins, buyers included.
 5. A buyer can upvote or downvote any article they purchased — Reddit-style, at any
    time after purchase, changeable or clearable forever. Every article shows its net
    score (upvotes − downvotes) publicly; no votes yet displays as 0.
@@ -315,10 +316,10 @@ clauses, then named helper calls — no inline money logic anywhere outside
 
 | Route | Auth | Behavior |
 |---|---|---|
-| `GET /articles` | optional | Published only, newest first. Items: `{id, title, summary, price_cents, author_name, created_at, owned, score}`. `owned` = entitlement rule. `score` = net votes (0 when none). **No `body`, ever, in lists.** |
+| `GET /articles` | optional | Published only, newest first. Items: `{id, title, summary, price_cents, author_name, created_at, owned, purchased, score}`. `owned` = entitlement rule. `purchased` = caller actually bought it — `owned` minus the author/admin grant; drives the frontend's "My library" filter. `score` = net votes (0 when none). **No `body`, ever, in lists.** |
 | `GET /articles/{id}` | optional | Teaser fields + `owned` + `score` + `my_vote` (+ `status` and `price_cents` editable context when caller is author/admin). `my_vote` is `1`/`-1`/`0` when the caller purchased the article (0 = no vote yet), `null` otherwise — the frontend's signal to render vote controls. `body` included **only** if entitled. Drafts → 404 for everyone except author/admin. |
 | `GET /articles/mine` | session | All caller's articles, any status, plus per-article `sales_count` and `earned_cents` (one aggregation over purchases). |
-| `GET /articles/all` | admin | Every article, any status, any author (teaser fields + status + author_name, no bodies) — feeds the admin moderation table. |
+| `GET /articles/all` | admin | Every article, any status, any author: `{id, title, summary, price_cents, author_name, created_at, status}` — no bodies, no entitlement/score fields (the moderation table renders none of them, so no score aggregation runs here). |
 | `POST /articles` | session | Create as `draft`. Validate title/summary/body/price (§3 bounds). → `{success, message, id}` |
 | `PUT /articles/{id}` | author or admin | Update any of title/summary/body/price_cents/status (`draft` ↔ `published`). Same validation. Buyers keep access to the current version. |
 | `DELETE /articles/{id}` | author or admin | Delete. Purchase/ledger history is never touched. |

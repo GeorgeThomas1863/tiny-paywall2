@@ -693,27 +693,3 @@ nav button {
   padding: 0.25rem 0.6rem;
   font-size: 0.85rem;
 }
-
-/*--- vote controls (aria-pressed marks the caller's current vote) ---*/
-
-button[aria-pressed] {
-  padding: 0.15rem 0.5rem;
-  font-size: 0.85rem;
-  color: #444;
-  background: var(--surface);
-  border: 1px solid #c8c8c8;
-}
-
-button[aria-pressed]:hover:not(:disabled) {
-  background: var(--bg);
-}
-
-button[aria-pressed='true'] {
-  color: #fff;
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-button[aria-pressed='true']:hover:not(:disabled) {
-  background: var(--accent-strong);
-}

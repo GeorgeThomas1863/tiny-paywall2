@@ -3,6 +3,7 @@ from bson import ObjectId
 from fastapi import HTTPException
 
 from db.connection import get_db
+from tests.helpers import fund_wallet
 
 ALICE = {"email": "alice@test.com", "password": "password123", "display_name": "Alice"}
 BOB = {"email": "bob@test.com", "password": "password456", "display_name": "Bob"}
@@ -346,7 +347,77 @@ async def test_mine_excludes_other_authors(make_client):
     assert items == []
 
 
+#--- purchased flag ---
+
+async def fund_and_buy(client, email, article_id, stripe_tag):
+    buyer = await get_db().users.find_one({"email": email})
+    await fund_wallet(buyer["_id"], 100, stripe_tag)
+    response = await client.post("/purchases", json={"article_id": article_id})
+    assert response.status_code == 200
+
+
+async def test_list_purchased_flag_tracks_actual_purchases(make_client):
+    alice = await make_client()
+    bob = await make_client()
+    await register(alice, ALICE)
+    await register(bob, BOB)
+    bought_id = await create_published_article(alice, title="Bought")
+    await create_published_article(alice, title="Not bought")
+    await fund_and_buy(bob, BOB["email"], bought_id, "cs_purchased_list")
+
+    items = {item["title"]: item for item in (await bob.get("/articles")).json()}
+
+    assert items["Bought"]["purchased"] is True
+    assert items["Bought"]["owned"] is True
+    assert items["Not bought"]["purchased"] is False
+    assert items["Not bought"]["owned"] is False
+
+
+async def test_author_and_admin_own_without_purchased(make_client):
+    alice = await make_client()
+    admin = await make_client()
+    await register(alice, ALICE)
+    await register(admin, ADMIN)
+    await make_admin(ADMIN["email"])
+    await create_published_article(alice)
+
+    author_item = (await alice.get("/articles")).json()[0]
+    admin_item = (await admin.get("/articles")).json()[0]
+
+    assert author_item["owned"] is True
+    assert author_item["purchased"] is False
+    assert admin_item["owned"] is True
+    assert admin_item["purchased"] is False
+
+
+async def test_detail_includes_purchased(client, make_client):
+    alice = await make_client()
+    bob = await make_client()
+    await register(alice, ALICE)
+    await register(bob, BOB)
+    article_id = await create_published_article(alice)
+    await fund_and_buy(bob, BOB["email"], article_id, "cs_purchased_detail")
+
+    assert (await bob.get(f"/articles/{article_id}")).json()["purchased"] is True
+    assert (await alice.get(f"/articles/{article_id}")).json()["purchased"] is False
+    assert (await client.get(f"/articles/{article_id}")).json()["purchased"] is False
+
+
 #--- admin list ---
+
+async def test_admin_list_has_no_entitlement_or_score_fields(make_client):
+    alice = await make_client()
+    admin = await make_client()
+    await register(alice, ALICE)
+    await register(admin, ADMIN)
+    await make_admin(ADMIN["email"])
+    await create_published_article(alice)
+
+    item = (await admin.get("/articles/all")).json()[0]
+
+    for field in ("score", "owned", "purchased"):
+        assert field not in item, f"admin list should not carry {field}"
+
 
 async def test_admin_list_shows_everything(make_client):
     alice = await make_client()

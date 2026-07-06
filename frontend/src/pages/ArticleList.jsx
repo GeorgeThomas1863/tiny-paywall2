@@ -136,7 +136,7 @@ const buildVisibleArticles = (articles, view, query) => {
   for (const article of articles) {
     if (needle && !matchesQuery(article, needle)) continue
     if (view === 'cheap' && article.price_cents >= 25) continue
-    if (view === 'library' && !article.owned) continue
+    if (view === 'library' && !article.purchased) continue
     matched.push(article)
   }
 
