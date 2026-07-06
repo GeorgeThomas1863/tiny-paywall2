@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { fetchMe, logoutUser } from './api/auth-api.js'
 import NavBar from './components/NavBar.jsx'
 import AccountPage from './pages/AccountPage.jsx'
@@ -13,6 +13,7 @@ import MyArticles from './pages/MyArticles.jsx'
 function App() {
   const [user, setUser] = useState(null)
   const [authChecked, setAuthChecked] = useState(false)
+  const { pathname } = useLocation()
 
   const refreshUser = async () => {
     const me = await fetchMe()
@@ -34,9 +35,9 @@ function App() {
   return (
     <>
       <NavBar user={user} onLogout={handleLogout} />
-      <main>
+      <main className={pathname === '/' ? 'main-wide' : undefined}>
         <Routes>
-          <Route path="/" element={<ArticleList />} />
+          <Route path="/" element={<ArticleList user={user} />} />
           <Route
             path="/articles/:articleId"
             element={<ArticleView user={user} onUserChange={refreshUser} />}

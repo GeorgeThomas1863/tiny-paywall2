@@ -1,21 +1,40 @@
 import { Link } from 'react-router-dom'
-import { formatCents } from '../format.js'
+import { avatarGradient, formatCents } from '../format.js'
 
 function NavBar({ user, onLogout }) {
   return (
-    <nav>
-      <Link to="/">tiny-paywall</Link>
-      {user ? (
-        <span>
-          <Link to="/account">{formatCents(user.wallet_cents)}</Link>
-          <Link to="/write">Write</Link>
-          {user.is_admin && <Link to="/admin">Admin</Link>}
-          {user.display_name}
-          <button onClick={onLogout}>Logout</button>
-        </span>
-      ) : (
-        <Link to="/login">Login</Link>
-      )}
+    <nav className="topbar">
+      <Link to="/" className="brand">
+        tiny<b>paywall</b>
+      </Link>
+      <span className="topbar-links">
+        {user ? (
+          <>
+            <Link to="/account" className="wallet-chip">
+              {formatCents(user.wallet_cents)}
+            </Link>
+            <Link to="/write" className="accent-btn">
+              Write
+            </Link>
+            {user.is_admin && <Link to="/admin">Admin</Link>}
+            <Link to="/account" className="user-chip">
+              <span
+                className="avatar"
+                style={avatarGradient(user.display_name)}
+                aria-hidden="true"
+              />
+              {user.display_name}
+            </Link>
+            <button onClick={onLogout} className="ghost-btn">
+              Logout
+            </button>
+          </>
+        ) : (
+          <Link to="/login" className="accent-btn">
+            Login
+          </Link>
+        )}
+      </span>
     </nav>
   )
 }
