@@ -455,6 +455,12 @@ main.main-mid {
   font-size: 1.1rem;
   line-height: 1.55;
   color: var(--muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .article-body {
